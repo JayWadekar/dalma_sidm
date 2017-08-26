@@ -1,9 +1,5 @@
 #!/usr/bin/env python
 
-#changed cross-section to 200mb
-Change tfrac bins
-Change He collisions
-
 #SBATCH -p parallel
 #SBATCH -o "/scratch/dsw310/sidm_data/surface/node2/output.log"
 #SBATCH -e "/scratch/dsw310/sidm_data/surface/node2/error.log"
@@ -35,14 +31,16 @@ nfw= NFWPotential(a=16/8.,normalize=.35)
 #bp= PowerSphericalPotentialwCutoff(alpha=1.8,rc=1.9/8.,normalize=0.05)
 mwp = MWPotential2014
 
-column_ref_b = 1673/500*1.24/6.04
+column_convert = 1673.*1.24/6.04
 t_tot = 1./bovy_conversion.time_in_Gyr(220.,8.); n_t = 900.
 ts= np.linspace(0,t_tot,n_t)
 sigmav_cmz=10./220. 
 sigmav = 7./220.
 sigmav_halo = 50./220.
 
-tfrac = np.arange(0.05,10.5,0.05); tfrac = np.append(tfrac,[10.5,11.5])#last time not counted but choose high enough value
+tfrac=np.arange(0.015,0.31,0.015)
+for i in range(2,11,2): tfrac = np.append(tfrac,np.arange(i-0.15,i+0.16,0.015))    
+tfrac = np.append(tfrac[:-1],[10.15,11.15])#last time not counted but choose high enough value
 lines = np.load('/scratch/dsw310/sidm_source/Input_data/equilibrated_MW_23.npy')
 cst_b = 1.989*220.*3.154/pow(3.086,3)*bovy_conversion.time_in_Gyr(220.,8.)*t_tot/n_t
 cst_Ghalo = 0.22*3.154*1.67*1.35*pow(5,-1.5)*bovy_conversion.time_in_Gyr(220.,8.)*t_tot/n_t
@@ -53,19 +51,28 @@ gas_dens_log = interp1d(gas_dens_data[:,0], np.log(gas_dens_data[:,1]),fill_valu
 gas_scale_data = np.loadtxt('/scratch/dsw310/sidm_source/Input_data/hI_height_galpy.dat')#kpc
 gas_scale_log = interp1d(gas_scale_data[:,0], np.log(gas_scale_data[:,1]),fill_value='extrapolate')
 
+  
 def Coll(R,phi,z,vR,vT,vz):
     theta = np.arccos(2.*random.random() - 1.)
-    phi = 2*np.pi*random.random()
+    phi = 2.*np.pi*random.random()
     veldm = np.array([vR,vT,vz])
-    if (abs(z)>(2/8.)):
-        velb = np.array([np.random.normal(0,sigmav_halo), 183/220.+np.random.normal(0,sigmav_halo), np.random.normal(0,sigmav_halo)])
+    He_flag=False
+    if (abs(z)>(2./8.)):
+        velb = np.array([np.random.normal(0,sigmav_halo), 183./220.+np.random.normal(0,sigmav_halo), np.random.normal(0,sigmav_halo)])
     elif (R<(0.5/8.)):
         velb = np.array([np.random.normal(0,sigmav_cmz), vcirc(mwp,R)+np.random.normal(0,sigmav_cmz), np.random.normal(0,sigmav_cmz)])
     else:
-        velb = np.array([np.random.normal(0,sigmav), vcirc(mwp,R)+np.random.normal(0,sigmav), np.random.normal(0,sigmav)])
-    vel = 1./3.*velb+2./3.*veldm-1./3.*np.linalg.norm(veldm-velb)*np.array([np.sin(theta)*np.cos(phi),np.sin(theta)*np.sin(phi),np.cos(theta)])
-    velb_final = velb+2*veldm-2.*vel
-    energy=np.linalg.norm(velb_final)**2-np.linalg.norm(velb)**2
+        if(random.random()>0.15231788):
+            He_flag=True;velb = np.array([np.random.normal(0,sigmav/2.), vcirc(mwp,R)+np.random.normal(0,sigmav/2.), np.random.normal(0,sigmav/2.)])
+        else:   velb = np.array([np.random.normal(0,sigmav), vcirc(mwp,R)+np.random.normal(0,sigmav), np.random.normal(0,sigmav)])
+    if (He_flag==False):
+        vel = 1./3.*velb+2./3.*veldm-1./3.*np.linalg.norm(veldm-velb)*np.array([np.sin(theta)*np.cos(phi),np.sin(theta)*np.sin(phi),np.cos(theta)])
+        velb_final = velb+2.*veldm-2.*vel
+        energy=np.linalg.norm(velb_final)**2-np.linalg.norm(velb)**2
+    else:
+        vel = 2./3.*velb+1./3.*veldm-2./3.*np.linalg.norm(veldm-velb)*np.array([np.sin(theta)*np.cos(phi),np.sin(theta)*np.sin(phi),np.cos(theta)])
+        velb_final = 2.*velb+veldm-vel;He_flag=False
+        energy=4.*np.linalg.norm(velb_final)**2-4.*np.linalg.norm(velb)**2
     return [vel,velb_final,energy]
     
 
@@ -73,7 +80,7 @@ def particle(num):
     global save_surf
     o= Orbit(vxvv=lines[num]) #Initial condition [R,vR,vT,z,vz,phi] 
     #print "Num,R,z:", ([num,lines[num][0]*8., lines[num][3]*8.])
-    column_b=0.; column0_b = -column_ref_b*np.log(random.random())
+    column_b=0.; column0_b = -column_convert*np.log(random.random())
     time = 0.; tpick = 0.
     numcoll_b = 0; i_tf = 0
     surf=[[o.R(tpick)*8.,o.phi(tpick),o.z(tpick)*8.,o.vR(tpick)*220.,o.vT(tpick)*220.,o.vz(tpick)*220.]]
@@ -81,17 +88,19 @@ def particle(num):
     flag=True
     
     #See if the orbit should be excluded--------------------------
-    ts_use = np.linspace(0,t_tot*10.5,n_t*8) #co-efficients arbitrarily chosen 
-    cst_b_use = cst_b*10.5/8.; cst_Ghalo_use = cst_Ghalo*10.5/8.
+    ts_use = np.linspace(0,t_tot*10.15,n_t*8.) #co-efficients arbitrarily chosen 
+    cst_b_use = cst_b*10.15/8.; cst_Ghalo_use = cst_Ghalo*10.15/8.
     
     # Orbit integration-----------------------------------------
-    while (time<10.5):
+    while (time<10.15):
         o.integrate(ts_use,MWPotential2014,method='dopr54_c')
         for t in ts_use:
-            column_b+= (np.exp(gas_dens_log(o.R(t)*8.)-pow(o.z(t)*8.,2)/np.exp(gas_scale_log(o.R(t)*8)))*np.linalg.norm(np.array([o.vR(t),o.vT(t)-vcirc(mwp,o.R(t)),o.vz(t)]))*cst_b_use) + (pow(1+(o.r(t)/(5./8.))**2,-0.75)*np.linalg.norm(np.array([o.vR(t),o.vT(t)-183/220.,o.vz(t)]))*cst_Ghalo_use) 
+            vdisk=np.linalg.norm(np.array([o.vR(t),o.vT(t)-vcirc(mwp,o.R(t)),o.vz(t)]))
+            vhalo=np.linalg.norm(np.array([o.vR(t),o.vT(t)-183/220.,o.vz(t)]))
+            column_b+= (np.exp(gas_dens_log(o.R(t)*8.)-pow(o.z(t)*8.,2)/np.exp(gas_scale_log(o.R(t)*8)))*vdisk*cst_b_use)*(600.-400.*np.tanh(1.72787595948*vdisk-1.5707963268)) + (pow(1+(o.r(t)/(5./8.))**2,-0.75)*vhalo*cst_Ghalo_use)*(600.-400.*np.tanh(1.72787595948*vhalo-1.5707963268))
                     
             if (column_b > column0_b):
-                numcoll_b+=1; column_b = 0.; column0_b = -column_ref_b*np.log(random.random())  
+                numcoll_b+=1; column_b = 0.; column0_b = -column_convert*np.log(random.random())  
                 [vel,velb_final,energy]=Coll(o.R(t),o.phi(t),o.z(t),o.vR(t),o.vT(t),o.vz(t))
                 time+=t*bovy_conversion.time_in_Gyr(220.,8.)
                 coll_save.append([o.R(t)*8.,o.phi(t),o.z(t)*8.,velb_final[0]*220.,velb_final[1]*220.,velb_final[2]*220.,energy*(220.**2),num,time])
@@ -164,7 +173,6 @@ if __name__ == '__main__':
             temp.extend(np.concatenate([np.array_split(snaps[i],len(j))]).tolist())
             np.save("/scratch/dsw310/sidm_data/surface/node2/"+str(i)+".npy",temp)
         #print ('file time: [{}]'.format((time.time() - start_time1)))
-
 
 
 
