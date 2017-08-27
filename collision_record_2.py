@@ -1,9 +1,10 @@
 #!/usr/bin/env python
+#Constant cross-section
 
 #SBATCH -p parallel
 #SBATCH -o "/scratch/dsw310/sidm_data/surface/node2/output.log"
 #SBATCH -e "/scratch/dsw310/sidm_data/surface/node2/error.log"
-#SBATCH -n 50
+#SBATCH -n 45
 #SBATCH --mail-type=ALL 
 #SBATCH --mail-user=dsw310
 #SBATCH --time=12:00:00
@@ -31,7 +32,7 @@ nfw= NFWPotential(a=16/8.,normalize=.35)
 #bp= PowerSphericalPotentialwCutoff(alpha=1.8,rc=1.9/8.,normalize=0.05)
 mwp = MWPotential2014
 
-column_convert = 1673.*1.24/6.04
+column_convert = 1673./800*1.24/6.04
 t_tot = 1./bovy_conversion.time_in_Gyr(220.,8.); n_t = 900.
 ts= np.linspace(0,t_tot,n_t)
 sigmav_cmz=10./220. 
@@ -50,7 +51,6 @@ gas_dens_data = np.loadtxt('/scratch/dsw310/sidm_source/Input_data/hI_dens_galpy
 gas_dens_log = interp1d(gas_dens_data[:,0], np.log(gas_dens_data[:,1]),fill_value='extrapolate')
 gas_scale_data = np.loadtxt('/scratch/dsw310/sidm_source/Input_data/hI_height_galpy.dat')#kpc
 gas_scale_log = interp1d(gas_scale_data[:,0], np.log(gas_scale_data[:,1]),fill_value='extrapolate')
-
   
 def Coll(R,phi,z,vR,vT,vz):
     theta = np.arccos(2.*random.random() - 1.)
@@ -72,7 +72,7 @@ def Coll(R,phi,z,vR,vT,vz):
     else:
         vel = 2./3.*velb+1./3.*veldm-2./3.*np.linalg.norm(veldm-velb)*np.array([np.sin(theta)*np.cos(phi),np.sin(theta)*np.sin(phi),np.cos(theta)])
         velb_final = 2.*velb+veldm-vel;He_flag=False
-        energy=4.*np.linalg.norm(velb_final)**2-4.*np.linalg.norm(velb)**2
+        energy=4.*(np.linalg.norm(velb_final)**2-np.linalg.norm(velb)**2)
     return [vel,velb_final,energy]
     
 
@@ -88,16 +88,14 @@ def particle(num):
     flag=True
     
     #See if the orbit should be excluded--------------------------
-    ts_use = np.linspace(0,t_tot*10.15,n_t*8.) #co-efficients arbitrarily chosen 
+    ts_use = np.linspace(0,t_tot*10.15,n_t*8.) #sampling arbitrarily chosen 
     cst_b_use = cst_b*10.15/8.; cst_Ghalo_use = cst_Ghalo*10.15/8.
     
     # Orbit integration-----------------------------------------
     while (time<10.15):
         o.integrate(ts_use,MWPotential2014,method='dopr54_c')
         for t in ts_use:
-            vdisk=np.linalg.norm(np.array([o.vR(t),o.vT(t)-vcirc(mwp,o.R(t)),o.vz(t)]))
-            vhalo=np.linalg.norm(np.array([o.vR(t),o.vT(t)-183/220.,o.vz(t)]))
-            column_b+= (np.exp(gas_dens_log(o.R(t)*8.)-pow(o.z(t)*8.,2)/np.exp(gas_scale_log(o.R(t)*8)))*vdisk*cst_b_use)*(600.-400.*np.tanh(1.72787595948*vdisk-1.5707963268)) + (pow(1+(o.r(t)/(5./8.))**2,-0.75)*vhalo*cst_Ghalo_use)*(600.-400.*np.tanh(1.72787595948*vhalo-1.5707963268))
+            column_b+= (np.exp(gas_dens_log(o.R(t)*8.)-pow(o.z(t)*8.,2)/np.exp(gas_scale_log(o.R(t)*8)))*np.linalg.norm(np.array([o.vR(t),o.vT(t)-vcirc(mwp,o.R(t)),o.vz(t)]))*cst_b_use) + (pow(1+(o.r(t)/(5./8.))**2,-0.75)*np.linalg.norm(np.array([o.vR(t),o.vT(t)-183/220.,o.vz(t)]))*cst_Ghalo_use) 
                     
             if (column_b > column0_b):
                 numcoll_b+=1; column_b = 0.; column0_b = -column_convert*np.log(random.random())  
@@ -120,7 +118,7 @@ def particle(num):
                 flag=True   
                 break
         ts_use=ts; cst_b_use= cst_b; cst_Ghalo_use= cst_Ghalo
-        if (numcoll_b>40 and np.linalg.norm([coll_save[-1][0]-coll_save[-2][0],coll_save[-1][2]-coll_save[-2][2]])<0.1): #More then 40 and close collisions
+        if (numcoll_b>40 and np.linalg.norm([coll_save[-1][0]-coll_save[-2][0],coll_save[-1][2]-coll_save[-2][2]])<0.1): #More than 40 and close collisions
             while(len(surf)<len(tfrac)):
                 surf.append([coll_save[-1][0],coll_save[-1][1],coll_save[-1][2],coll_save[-1][3],coll_save[-1][4],coll_save[-1][5]])
             break   
