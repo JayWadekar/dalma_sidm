@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#Constant cross-section
+#500mb
 
 #SBATCH -p parallel
 #SBATCH -o "/scratch/dsw310/sidm_data/surface/node2/output.log"
@@ -7,7 +7,7 @@
 #SBATCH -n 45
 #SBATCH --mail-type=ALL 
 #SBATCH --mail-user=dsw310
-#SBATCH --time=12:00:00
+#SBATCH --time=11:00:00
 
 import os
 import numpy as np
@@ -32,7 +32,7 @@ nfw= NFWPotential(a=16/8.,normalize=.35)
 #bp= PowerSphericalPotentialwCutoff(alpha=1.8,rc=1.9/8.,normalize=0.05)
 mwp = MWPotential2014
 
-column_convert = 1673./800*1.24/6.04
+column_convert = 1673./500*1.24/6.04
 t_tot = 1./bovy_conversion.time_in_Gyr(220.,8.); n_t = 900.
 ts= np.linspace(0,t_tot,n_t)
 sigmav_cmz=10./220. 
@@ -95,7 +95,7 @@ def particle(num):
     while (time<10.15):
         o.integrate(ts_use,MWPotential2014,method='dopr54_c')
         for t in ts_use:
-            column_b+= (np.exp(gas_dens_log(o.R(t)*8.)-pow(o.z(t)*8.,2)/np.exp(gas_scale_log(o.R(t)*8)))*np.linalg.norm(np.array([o.vR(t),o.vT(t)-vcirc(mwp,o.R(t)),o.vz(t)]))*cst_b_use) + (pow(1+(o.r(t)/(5./8.))**2,-0.75)*np.linalg.norm(np.array([o.vR(t),o.vT(t)-183/220.,o.vz(t)]))*cst_Ghalo_use) 
+            column_b+= (np.exp(gas_dens_log(o.R(t)*8.)-pow(o.z(t)*8.,2)/np.exp(gas_scale_log(o.R(t)*8)))*np.linalg.norm(np.array([o.vR(t),o.vT(t)-vcirc(mwp,o.R(t)),o.vz(t)]))*cst_b_use) + (pow(1+(o.r(t)/(5./8.))**2,-0.75)*np.linalg.norm(np.array([o.vR(t),o.vT(t)-183/220.,o.vz(t)]))*cst_Ghalo_use)
                     
             if (column_b > column0_b):
                 numcoll_b+=1; column_b = 0.; column0_b = -column_convert*np.log(random.random())  
